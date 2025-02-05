@@ -1,0 +1,16 @@
+# Use the official TimescaleDB image as a base
+FROM timescale/timescaledb-ha:pg17
+
+# Set environment variables for the TimescaleDB database
+ENV POSTGRES_USER=myuser
+ENV POSTGRES_PASSWORD=mypassword
+
+# Copy initialization scripts, if any
+# These scripts will run automatically on container startup
+COPY ./init-scripts /docker-entrypoint-initdb.d/
+
+# Expose the default TimescaleDB port
+EXPOSE 5432
+
+# Set the command to run TimescaleDB
+CMD ["postgres"]

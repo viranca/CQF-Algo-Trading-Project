@@ -1,0 +1,19 @@
+# Use the official PostgreSQL image as a base
+FROM postgres:latest
+
+# Set environment variables for the PostgreSQL database
+ENV POSTGRES_USER=myuser
+ENV POSTGRES_PASSWORD=mypassword
+
+
+# Copy initialization scripts, if any
+# These scripts will run automatically on container startup
+COPY ./init-scripts /docker-entrypoint-initdb.d/
+
+# Expose the default PostgreSQL port
+EXPOSE 5432
+
+# Set the command to run PostgreSQL
+CMD ["postgres"]
+
+

@@ -1,0 +1,55 @@
+import alpaca_trade_api as tradeapi
+import psycopg2
+
+# Alpaca API credentials
+APCA_API_BASE_URL = "https://paper-api.alpaca.markets"
+APCA_API_KEY_ID = "removed"
+APCA_API_SECRET_KEY = "removed"
+
+# Database connection parameters
+DB_HOST = "postgres"
+DB_PORT = "5432"
+DB_NAME = "research"
+DB_USER = "myuser"
+DB_PASSWORD = "mypassword"
+PORTFOLIO_TABLE_NAME = "portfolio_orders"
+
+# Initialize the Alpaca API
+api = tradeapi.REST(APCA_API_KEY_ID, APCA_API_SECRET_KEY, APCA_API_BASE_URL, api_version='v2')
+
+# Fetch all open positions
+try:
+    positions = api.list_positions()
+    print("Successfully retrieved open positions:")
+    for position in positions:
+        print(f"Symbol: {position.symbol}, Quantity: {position.qty}, Market Value: {position.market_value}")
+
+    # Connect to the PostgreSQL database
+    connection = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    cursor = connection.cursor()
+
+    # Query to fetch all portfolio orders
+    cursor.execute(f"SELECT symbol, SUM(CASE WHEN side = 'buy' THEN 1 ELSE -1 END) AS qty FROM {PORTFOLIO_TABLE_NAME} GROUP BY symbol;")
+    portfolio_orders = cursor.fetchall()
+
+    # Compare open positions with portfolio orders
+    portfolio_dict = {order[0]: order[1] for order in portfolio_orders}
+    for position in positions:
+        symbol = position.symbol
+        qty = int(position.qty)
+        if symbol not in portfolio_dict or portfolio_dict[symbol] != qty:
+            raise Exception(f"Mismatch found for symbol {symbol}: Open position quantity is {qty}, but portfolio order quantity is {portfolio_dict.get(symbol, 0)}")
+
+except Exception as e:
+    print("Error:", e)
+finally:
+    if 'cursor' in locals():
+        cursor.close()
+    if 'connection' in locals():
+        connection.close()

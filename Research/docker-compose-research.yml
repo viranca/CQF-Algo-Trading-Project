@@ -1,0 +1,143 @@
+services:
+  postgres:
+    build:
+      context: ./timescaledb
+      dockerfile: Dockerfile.timescaledb
+    container_name: timescaledb
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "myuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  yfinance-scripts:
+    build:
+      context: ./yfinance
+      dockerfile: Dockerfile.yfinance
+    container_name: yfinance-scripts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    volumes:
+      - ./yfinance:/app
+    command: ["bash", "-c", "python3 /app/yfinance_daily_data_initialize.py; while true; do python3 /app/yfinance_minute_data_initialize.py; sleep 60; done & while true; do current_time=$(date +%H:%M); if [ \"$current_time\" == \"03:00\" ]; then python3 /app/yfinance_daily_data_initialize.py; fi; sleep 60; done"]
+  
+  alpaca-scripts:
+    build:
+      context: ./alpaca
+      dockerfile: Dockerfile.alpaca
+    container_name: alpaca-scripts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    volumes:
+      - ./alpaca:/app
+    command: ["bash", "-c", "python3 /app/alpaca_daily_data_initialize.py; touch /tmp/first_pass_complete; while true; do python3 /app/alpaca_minute_data_initialize.py; sleep 60; done & while true; do current_time=$(date +%H:%M); if [ \"$current_time\" == \"03:00\" ]; then python3 /app/alpaca_daily_data_initialize.py; fi; sleep 60; done"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/first_pass_complete"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  strategies:
+    build:
+      context: ./generic_strategies
+      dockerfile: Dockerfile.strategies
+    container_name: strategies
+    depends_on:
+      postgres:
+        condition: service_healthy
+      alpaca-scripts:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    volumes:
+      - ./generic_strategies:/app
+    command: ["bash", "-c", "python3 /app/trend_following/daily_trend_following_adx.py; python3 /app/trend_following/minute_trend_following_adx.py; python3 /app/mean_reversion/daily_mean_reversion.py; python3 /app/mean_reversion/minute_mean_reversion.py; while true; do sleep 60; done"]
+
+  # ib-gateway:
+  #   restart: always
+  #   image: ghcr.io/gnzsnz/ib-gateway:stable
+  #   build:
+  #     context: ./interactive_brokers/ib-gateway-docker-master/stable
+  #     tags:
+  #       - "ghcr.io/gnzsnz/ib-gateway:stable"
+  #   environment:
+  #     TWS_USERID: ${TWS_USERID}
+  #     TWS_PASSWORD: ${TWS_PASSWORD}
+  #     TRADING_MODE: ${TRADING_MODE:-paper}
+  #     TWS_SETTINGS_PATH: ${TWS_SETTINGS_PATH:-}
+  #     TWS_ACCEPT_INCOMING: ${TWS_ACCEPT_INCOMING:-}
+  #     READ_ONLY_API: ${READ_ONLY_API:-}
+  #     VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
+  #     TWOFA_TIMEOUT_ACTION: ${TWOFA_TIMEOUT_ACTION:-exit}
+  #     BYPASS_WARNING: ${BYPASS_WARNING:-}
+  #     AUTO_RESTART_TIME: ${AUTO_RESTART_TIME:-}
+  #     AUTO_LOGOFF_TIME: ${AUTO_LOGOFF_TIME:-}
+  #     TWS_COLD_RESTART: ${TWS_COLD_RESTART:-}
+  #     SAVE_TWS_SETTINGS: ${SAVE_TWS_SETTINGS:-}
+  #     RELOGIN_AFTER_TWOFA_TIMEOUT: ${RELOGIN_AFTER_TWOFA_TIMEOUT:-no}
+  #     TWOFA_EXIT_INTERVAL: ${TWOFA_EXIT_INTERVAL:-60}
+  #     TWOFA_DEVICE: ${TWOFA_DEVICE:-}
+  #     EXISTING_SESSION_DETECTED_ACTION: ${EXISTING_SESSION_DETECTED_ACTION:-primary}
+  #     ALLOW_BLIND_TRADING: ${ALLOW_BLIND_TRADING:-no}
+  #     TIME_ZONE: ${TIME_ZONE:-Etc/UTC}
+  #     TZ: ${TIME_ZONE:-Etc/UTC}
+  #     CUSTOM_CONFIG: ${CUSTOM_CONFIG:-NO}
+  #     JAVA_HEAP_SIZE: ${JAVA_HEAP_SIZE:-}
+  #     SSH_TUNNEL: ${SSH_TUNNEL:-}
+  #     SSH_OPTIONS: ${SSH_OPTIONS:-}
+  #     SSH_ALIVE_INTERVAL: ${SSH_ALIVE_INTERVAL:-}
+  #     SSH_ALIVE_COUNT: ${SSH_ALIVE_COUNT:-}
+  #     SSH_PASSPHRASE: ${SSH_PASSPHRASE:-}
+  #     SSH_REMOTE_PORT: ${SSH_REMOTE_PORT:-}
+  #     SSH_USER_TUNNEL: ${SSH_USER_TUNNEL:-}
+  #     SSH_RESTART: ${SSH_RESTART:-}
+  #     SSH_VNC_PORT: ${SSH_VNC_PORT:-}
+  #   networks:
+  #     - ib-network
+  #   ports:
+  #     - "127.0.0.1:4001:4001"
+  #     - "127.0.0.1:4002:4002"
+  #     - "127.0.0.1:5900:5900"
+
+  # ibkr-scripts:
+  #   build:
+  #     context: ./interactive_brokers
+  #     dockerfile: Dockerfile.ibkr
+  #   container_name: ibkr-scripts
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     ib-gateway:
+  #       condition: service_started
+  #   networks:
+  #     - ib-network
+  #   environment:
+  #     POSTGRES_USER: myuser
+  #     POSTGRES_PASSWORD: mypassword
+  #   volumes:
+  #     - ./interactive_brokers:/app
+  #   command: ["bash", "-c", "python3 /app/ibkr_daily_data_initialize.py && python3 /app/ibkr_minute_data_initialize.py"]
+
+# networks:
+#   ib-network:
+#     driver: bridge
+    
+volumes:
+  postgres_data:

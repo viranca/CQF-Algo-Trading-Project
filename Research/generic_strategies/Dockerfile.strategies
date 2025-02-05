@@ -1,0 +1,18 @@
+# Use the official Python image from the Docker Hub
+FROM python:3.9-slim
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Install required dependencies
+RUN apt-get update && apt-get install -y libpq-dev gcc && \
+    pip3 install psycopg2-binary pandas matplotlib
+
+# Copy specific script into the container
+COPY trend_following/minute_trend_following_adx.py /app/trend_following/minute_trend_following_adx.py
+COPY trend_following/daily_trend_following_adx.py /app/trend_following/daily_trend_following_adx.py
+COPY mean_reversion/minute_mean_reversion.py /app/mean_reversion/minute_mean_reversion.py
+COPY mean_reversion/daily_mean_reversion.py /app/mean_reversion/daily_mean_reversion.py
+
+# Command to run all scripts
+CMD ["bash", "-c", "python /app/minute_trend_following_adx.py && python /app/daily_trend_following_adx.py && python /app/daily_mean_reversion.py && python /app/minute_mean_reversion.py"]
